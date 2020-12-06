@@ -2,7 +2,7 @@ import requests
 import pandas as pd
 
 params = {
-    'access_key' : 'acd5606cae6615eb68812c798f6abdf1',
+    'access_key' : 'Your_access_key',
     'symbols' : 'AAPL',
     'date_from' : None,
     'date_to' : None,
