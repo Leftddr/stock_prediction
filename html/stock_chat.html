@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src = "https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.js"></script>
+        <script src = "/socket.io/socket.io.js"></script>
+        <meta charset = 'UTF-8'>
+        <title>Stock ChatBot</title>
+    </head>
+    <body>
+        <h3>Stock Chat Client</h3>
+        <br>
+        <div>
+            <input type = "text" id = "nick" value = "" placeholder="닉네임 입력해주세요">
+            <input type = "text" id = "hostInput" value = "localhost">
+            <input type = "text" id = "portInput" value = "54321">
+            <input type = "button" id = "connectButton" value = "connect">
+        </div>
+    </br>
+        <div>
+            <input type = "text" id = "roomid" value = "" placeholder="방 이름을 적어주세요">
+            <input type = "button" id = "roomcreate" value = "방 만들기"> </br> </br>
+            <input type = "button" id = "roomlist" value = "방 목록 보여주기">
+            <input type = "button" id = "roomenter" value = "방 입장">
+            <input type = "button" id = "roomleave" value = "방 나가기">
+        </div>
+        <p id="roomname">방 이름 : </p>
+        <p id="username">방에 있는 유저들 : </p>
+        <div id="room"></div>
+
+        <select id = "chat">
+            <option value="group">그룹 채팅</option>
+            <option value="All">모든 채팅</option>
+            <option value="private">개인 채팅</option>
+        </select>
+        <div>
+            <input type = "text" id = "nickname" value = "" placeholder="상대방 NickName을 입력하세요">
+            <input type = "text" id = "information" value = "" placeholder="공유할 정보를 입력하세요">
+            <input type = "button" id = "send" value = "send">
+        </div>
+        </br>
+
+        <hr/>
+        <p>결과 : </p>
+        <div id = "result"></div>
+
+        <script>
+            var host;
+            var port;
+            var socket;
+            var nickname, information;
+            var cur_room_id = ""
+            var entered_room_id = "";
+
+            $(document).ready(function(){
+                $("#connectButton").bind('click', function(event){
+                    nickname = $("#nick").val();
+                    host = $('#hostInput').val();
+                    port = $('#portInput').val();
+                    if(nickname == ""){
+                        alert("닉네임을 입력하지 않았습니다.");
+                        return;
+                    }
+                    connectToServer();
+                });
+
+                $("#send").bind('click', function(event){
+                    if(socket == undefined){
+                        alert('서버에 연결되어 있지 않습니다.');
+                        return;
+                    }
+
+                    var selectOption = document.getElementById("chat");
+                    selectOption = selectOption.options[selectOption.selectedIndex].value;
+
+                    let tonick = $('#nickname').val();
+                    let information = $('#information').val();
+
+                    if(selectOption == "private" && tonick == ""){
+                        alert("개인 채팅에는 상대 닉네임을 입력해주세요");
+                        return;
+                    }
+
+                    if(tonick == "All" || selectOption == "All"){
+                        var sendMessage = {sender : nickname, information : information}
+                        socket.emit('sendInformation', sendMessage);
+                    }
+                    else if(selectOption == "group"){
+                        if(entered_room_id == "") {alert("소속된 그룹이 없습니다."); return;}
+                        var sendMessage = {roomid : entered_room_id, sender : nickname, information : information}
+                        socket.emit('groupsend', sendMessage);
+                    }
+                    else{
+                        var sendMessage = {receiver : tonick, sender : nickname, information : information}
+                        socket.emit('sendPrivate', sendMessage);
+                    }
+                });
+
+                $("#roomcreate").bind('click', function(event){
+                    if(socket == undefined){
+                        alert('서버에 연결되어 있지 않습니다.');
+                        return;
+                    }
+                    var roomid = $("#roomid").val();
+                    if(roomid == ""){
+                        alert('만들 방 이름을 적어 주세요');
+                        return;
+                    }
+
+                    var message = {roomid : roomid, nickname : nickname};
+                    socket.emit("makeroom", message);
+                    entered_room_id = roomid;
+                });
+
+                $('#roomlist').bind('click', function(event){
+                    if(socket == undefined){
+                        alert('서버에 연결되어 있지 않습니다.');
+                        return;
+                    }
+
+                    socket.emit("roomlist", {});
+                });
+
+                $("#roomenter").bind('click', function(event){
+                    if(socket == undefined){
+                        alert('서버에 연결되어 있지 않습니다.');
+                        return;
+                    }
+                    if(cur_room_id == ""){
+                        alert("방을 선택해 주세요");
+                        return;
+                    }
+                    socket.emit("roomenter", {roomid : cur_room_id, nickname : nickname});
+                    entered_room_id = cur_room_id;
+                });
+
+                $("#roomleave").bind('click', function(event){
+                    if(socket == undefined){
+                        alert('서버에 연결되어 있지 않습니다.');
+                        return;
+                    }
+                    if(cur_room_id == ""){
+                        alert("방을 선택해 주세요");
+                        return;
+                    }
+                    entered_room_id = "";
+                    socket.emit("roomleave", {roomid : cur_room_id});
+                });
+
+                function connectToServer(){
+                    var options = {forceNew : true, transports : ['websocket']};
+                    var url = 'http://' + host + ':' + port;
+                    socket = io.connect(url,  options);
+
+                    socket.on('connect', function(){
+                        socket.emit('login', {id : nickname});
+                        socket.on('stockInfo', function(message){
+                            println('다음 주식 close 정보는 : ' + message.close + ' 입니다.');
+                        });
+
+                        socket.on('messageInfo', function(message){
+                            println(message.sender + ' 님(으)로 부터의 [정보] : ' + message.information);
+                        });
+
+                        socket.on('messagePriv', function(message){
+                            println(message.sender + ' 님(으)로 부터의 [사적인 정보] : ' + message.information);
+                        });
+
+                        socket.on('groupsend', function(message){
+                            println(message.sender + ' 님(으)로 부터의 [그룹 정보] : ' + message.information);
+                        })
+
+                        socket.on('response', function(message){
+                            if(message.message == "로그인이 성공적으로 완료되었습니다."){
+                                println("연결 되었습니다.");
+                            }
+                            else if(message.command == "roomlist"){
+                                var room = document.getElementById("room");
+                                while(room.hasChildNodes())
+                                    room.removeChild(room.firstChild)
+
+                                for(let i = 0 ; i < message.message.length ; i++){
+                                    var tag = document.createElement('p');
+                                    var text = document.createTextNode((i + 1) + " 번째 방 : " + message.message[i]);
+                                    tag.appendChild(text);
+                                    document.getElementById("room").appendChild(tag);
+                                    tag.addEventListener('click', function(event){
+                                        $("#roomname").text("방 이름 : " + message.message[i]);
+                                        cur_room_id = message.message[i];
+                                        socket.emit('userlist', {roomid : cur_room_id});
+                                    })
+                                }
+                            }
+                            else if(message.command == "userlist"){
+                                var users = "";
+                                for(let i = 0 ; i < message.message.length ; i++){
+                                    users += message.message[i];
+                                    if(i != message.message.length - 1)
+                                        users += ", "
+                                }
+                                $("#username").text("방에 있는 유저들 : " + users);
+                            }
+                            else{
+                                println(message.command + " " + message.code + " " + message.message);
+                            }
+                        })
+                    });
+
+                    socket.on('disconnect', function(reason){
+                        println('Socket disconnected!!!!' + reason);
+                        println(reason);
+                    });
+
+                    socket.on('error', function(){
+                        println('error');
+                    });
+                }
+
+                function println(data){
+                    console.log(data);
+                    $('#result').append('<p>' + data + '</p>');
+                }
+            });
+        </script>
+    </body>
+</html>
