@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <script src = "https://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.4/jquery.js"></script>
+        <script src = "/socket.io/socket.io.js"></script>
+        <meta charset = 'UTF-8'>
+        <title>Stock ChatBot</title>
+    </head>
+    <body>
+        <h3>Stock Chat Client</h3>
+        <br>
+        <div>
+            <input type = "text" id = "nick" value = "" placeholder="닉네임 입력해주세요">
+            <input type = "text" id = "hostInput" value = "localhost">
+            <input type = "text" id = "portInput" value = "54321">
+            <input type = "button" id = "connectButton" value = "connect">
+        </div>
+        <div>
+            <input type = "text" id = "nickname" value = "" placeholder="상대방 NickName 혹은 All 을 입력하세요">
+            <input type = "text" id = "information" value = "" placeholder="공유할 정보를 입력하세요">
+            <input type = "button" id = "send" value = "send">
+        </div>
+
+        <hr/>
+        <p>결과 : </p>
+        <div id = "result"></div>
+
+        <script>
+            var host;
+            var port;
+            var socket;
+            var nickname, information;
+
+            $(document).ready(function(){
+                $("#connectButton").bind('click', function(event){
+                    nickname = $("#nick").val();
+                    host = $('#hostInput').val();
+                    port = $('#portInput').val();
+                    if(nickname == ""){
+                        alert("닉네임을 입력하지 않았습니다.");
+                        return;
+                    }
+                    connectToServer();
+                });
+
+                $("#send").bind('click', function(event){
+                    if(socket == undefined){
+                        alert('서버에 연결되어 있지 않습니다.');
+                        return;
+                    }
+
+                    let tonick = $('#nickname').val();
+                    information = $('#information').val();
+
+                    if(tonick == "All"){
+                        var sendMessage = {sender : nickname, information : information}
+                        socket.emit('sendInformation', sendMessage);
+                    }
+                    else if(tonick == ""){
+                        alert("상대방 닉네임 이나 All를 입력해 주세요");
+                    }
+                    else{
+                        var sendMessage = {receiver : tonick, sender : nickname, information : information}
+                        socket.emit('sendPrivate', sendMessage);
+                    }
+                })
+
+                function connectToServer(){
+                    var options = {forceNew : true, transports : ['websocket']};
+                    var url = 'http://' + host + ':' + port;
+                    socket = io.connect(url,  options);
+
+                    socket.on('connect', function(){
+                        println('Socket connected');
+                        
+                        socket.emit('login', {id : nickname});
+                        socket.on('message', function(message){
+                            println('다음 주식 close 정보는 : ' + message.close + ' 입니다.');
+                        });
+
+                        socket.on('messageInfo', function(message){
+                            println(message.sender + ' 님(으)로 부터의 [정보] : ' + message.information);
+                        });
+
+                        socket.on('messagePriv', function(message){
+                            println(message.sender + ' 님(으)로 부터의 [사적인 정보] : ' + message.information);
+                        });
+
+                        socket.on('response', function(message){
+                            println(message.command + " " + message.code + " " + message.message);
+                        })
+                    });
+
+                    socket.on('disconnect', function(reason){
+                        println('Socket disconnected!!!!' + reason);
+                        println(reason);
+                    });
+
+                    socket.on('error', function(){
+                        println('error');
+                    });
+                }
+
+                function println(data){
+                    console.log(data);
+                    $('#result').append('<p>' + data + '</p>');
+                }
+            });
+        </script>
+    </body>
+</html>
