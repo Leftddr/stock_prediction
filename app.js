@@ -13,6 +13,9 @@ var passport = require('passport');
 var flash = require('connect-flash');
 var http = require('http');
 var fs = require('fs');
+const {PythonShell} = require('python-shell');
+var multer = require('multer');
+var upload = multer({dest : 'public/images/'});
 
 var app = express();
 var router = express.Router();
@@ -31,6 +34,7 @@ app.use(expressSession({
   resave: true,
   saveUninitialized: true
 }));
+app.use(express.static('public'));
 
 router.get('/', function(req, res){
     fs.readFile('./html/stock_chat.html', function(err, data){
@@ -39,7 +43,40 @@ router.get('/', function(req, res){
     })
 });
 
+router.get('/image', function(req, res){
+  res.sendfile('html/stock_chat.html');
+});
+
+router.post('/image', upload.any(), function(req, res, next){
+  var path = './public/images/';
+  var realpath = path + req.files[0].originalname;
+  var rename1 = './public/images/' + req.files[0].filename;
+  var rename2 = './public/images/' + req.files[0].originalname;
+
+  var send_url = '/images/' + req.files[0].originalname;
+
+  fs.rename(rename1, rename2, function(err){
+    if(err){
+      console.dir(err);
+      res.send("");
+      return;
+    }
+    console.dir("Rename Success!!!");
+    /*
+    fs.readFile(rename2, function(err, data){
+      if(err){console.dir(err); return;}
+      var tmp = new Buffer(data).toString('base64');
+      var url = rename2;
+      console.dir("Send Success");
+      res.send("1");
+    });
+    */
+   res.send(send_url);
+  });
+})
+
 app.use('/', router);
+
 var server = require('http').Server(app);
 server.listen(app.get('port'), () => {
   console.log('Starting Server');
@@ -47,27 +84,43 @@ server.listen(app.get('port'), () => {
 
 var io = socketio(server, {pingTimeout: 5000});
 console.log('Ready to Socket io');
-io.sockets.connected = [];
+io.sockets.connected = {};
 
 var login_ids = {};
+var socket_ids = {};
 var room_list = [];
 
 io.sockets.on('connection', function(socket){
-
     socket.on('login', function(message){
+      /*
       if(login_ids[message.id]){
         sendResponse(socket, "", '', '이미 존재하는 id 입니다.');
+        return;
+      }
+      */
+      console.dir(socket_ids);
+      console.dir(socket);
+      if(socket_ids[socket.id] && login_ids[message.id]){
+        sendResponse(socket, "", "", "재 접속 하셨습니다.");
+        return;
+      }
+      else if(login_ids[message.id]){
+        sendResponse(socket, "", "", "이미 존재하는 id입니다.");
         return;
       }
       login_ids[message.id] = socket.id;
       socket.login_id = message.id;
       io.sockets.connected[socket.id] = socket;
+      socket_ids[socket.id] = true;
       sendResponse(socket, message.id + "님", '', '로그인이 성공적으로 완료되었습니다.');
     });
 
     socket.on('sendInformation', function(message){
         console.dir("모든 사람에게 [정보] 메세지를 전달합니다.");
-        io.sockets.emit('messageInfo', message);
+        //io.sockets.emit('messageInfo', message);
+        for(let key in login_ids){
+          io.sockets.connected[login_ids[key]].emit('messageInfo', message);
+        }
     });
 
     socket.on('sendPrivate', function(message){
@@ -137,8 +190,7 @@ io.sockets.on('connection', function(socket){
 
     socket.on('roomleave', function(message){
       if(io.sockets.adapter.rooms.has(message.roomid)){
-        socket.leave(message.roomid);
-
+        console.dir(message.roomid);
         var curRoom = io.sockets.adapter.rooms.get(message.roomid);
         curRoom.users_cnt--;
         if(curRoom.users_cnt == 0){
@@ -146,12 +198,36 @@ io.sockets.on('connection', function(socket){
           sendResponse(socket, message.roomid, "", "을 완전히 삭제합니다.");
         }
         else{
+          socket.leave(message.roomid);
           console.dir(message.roomid + "방을 떠났습니다.");
           sendResponse(socket, message.roomid, "", "을 떠났습니다.");
         }
       }
       else{
         sendResponse(socket, '', '', '현재 보낸 이름을 가진 방이 없습니다.');
+      }
+    });
+
+    socket.on('sendimage', function(message){
+      console.dir("이미지 전송 시작");
+      if(message.type == "group"){
+        if(io.sockets.adapter.rooms.get(message.roomid)){
+          io.sockets.in(message.roomid).emit('recvimage', message);
+        }
+        else{
+          sendResponse(socket, '', '', '현재 보낸 이름을 가진 방이 없습니다.');
+        }
+      }
+      else if(message.type == "private"){
+        if(login_ids[message.receiver]){
+          io.sockets.connected[login_ids[message.receiver]].emit('recvimage', message);
+        }
+        else{
+          sendResponse(socket, message.receiver, '', '의 닉네임을 가진 사람이 없습니다.');
+        }
+      }
+      else{
+        io.sockets.emit('recvimage', message);
       }
     });
 });
