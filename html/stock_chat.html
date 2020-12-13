@@ -15,10 +15,10 @@
             <input type = "text" id = "portInput" value = "54321">
             <input type = "button" id = "connectButton" value = "connect">
         </div>
-    </br>
+    <br/>
         <div>
             <input type = "text" id = "roomid" value = "" placeholder="방 이름을 적어주세요">
-            <input type = "button" id = "roomcreate" value = "방 만들기"> </br> </br>
+            <input type = "button" id = "roomcreate" value = "방 만들기"> <br/> <br/>
             <input type = "button" id = "roomlist" value = "방 목록 보여주기">
             <input type = "button" id = "roomenter" value = "방 입장">
             <input type = "button" id = "roomleave" value = "방 나가기">
@@ -31,14 +31,21 @@
             <option value="group">그룹 채팅</option>
             <option value="All">모든 채팅</option>
             <option value="private">개인 채팅</option>
+            <option value="stockbot">주식 챗봇</option>
         </select>
+        <div>
+            <form id="up">
+                <input type="file" name="image" id="imglnp">
+                <input type="button" id="upload" value="이미지 보내기">
+            </form>
+        </div>
         <div>
             <input type = "text" id = "nickname" value = "" placeholder="상대방 NickName을 입력하세요">
             <input type = "text" id = "information" value = "" placeholder="공유할 정보를 입력하세요">
             <input type = "button" id = "send" value = "send">
         </div>
-        </br>
-
+        <br/>
+        <img src="../public/images/논문10.JPG">
         <hr/>
         <p>결과 : </p>
         <div id = "result"></div>
@@ -61,13 +68,45 @@
                         return;
                     }
                     connectToServer();
+                    var button = document.getElementById("connectButton");
+                    button.disabled = true;
                 });
+
+                $("#upload").bind('click', function(event){
+                    if(socket == undefined){
+                        alert("연결이 되어있지 않습니다.");
+                        return;
+                    }
+                    var form = $('#up')[0];
+                    var formData = new FormData(form);
+
+                    $.ajax({
+                        url : '/image',
+                        type : 'POST',
+                        data : formData,
+                        contentType : false,
+                        processData : false,
+                        success : function(res){
+                            if(res == ""){
+                                alert("이미지를 업로드 하는데 실패했습니다.");
+                                return;
+                            }
+                            send_image(socket, res);
+                        },
+                        error : function(err){
+                            console.dir(err);
+                        }
+                    })
+                })
 
                 $("#send").bind('click', function(event){
                     if(socket == undefined){
                         alert('서버에 연결되어 있지 않습니다.');
                         return;
                     }
+
+                    //socket.emit('sendimages', {type : 'all', sender : nickname, url : "../public/images/논문4.JPG"});
+                    //socket.emit('sendimage', {type : 'all', sender : nickname, roomid : entered_room_id, url : url});
 
                     var selectOption = document.getElementById("chat");
                     selectOption = selectOption.options[selectOption.selectedIndex].value;
@@ -89,9 +128,20 @@
                         var sendMessage = {roomid : entered_room_id, sender : nickname, information : information}
                         socket.emit('groupsend', sendMessage);
                     }
-                    else{
+                    else if(selectOption == "private"){
                         var sendMessage = {receiver : tonick, sender : nickname, information : information}
                         socket.emit('sendPrivate', sendMessage);
+                    }
+                    else if(selectOption == "stockbot"){
+                        let date_from = information.split(' ')[0];
+                        let date_to = information.split(' ')[1];
+                        if(date_from.length != 10 || date_to.length != 10){alert("FORMAT : [YYYY-MM-DD] [YYYY-MM-DD]"); return;}
+                        let retval = check_grammar(date_from, date_to);
+                        if(retval == 0){alert("날짜가 잘못되었습니다."); return;}
+                        else if(retval == -1){alert("FORMAT : [YYYY-MM-DD] [YYYY-MM-DD]"); return;}
+                        else{
+                            socket.emit("pred_stock", {date_from : date_from, date_to : date_to})
+                        }
                     }
                 });
 
@@ -167,7 +217,11 @@
 
                         socket.on('groupsend', function(message){
                             println(message.sender + ' 님(으)로 부터의 [그룹 정보] : ' + message.information);
-                        })
+                        });
+
+                        socket.on('pred_stock', function(message){
+                            println("에측 주식 close 정보는 " + message.pred + "입니다.");
+                        });
 
                         socket.on('response', function(message){
                             if(message.message == "로그인이 성공적으로 완료되었습니다."){
@@ -205,6 +259,11 @@
                         })
                     });
 
+                    socket.on('recvimage', function(message){
+                        $('#result').append('<p>' + message.sender + '님이 보낸 사진 </p>');
+                        $('#result').append("<img src='." + message.url + "'/>")
+                    });
+
                     socket.on('disconnect', function(reason){
                         println('Socket disconnected!!!!' + reason);
                         println(reason);
@@ -218,6 +277,52 @@
                 function println(data){
                     console.log(data);
                     $('#result').append('<p>' + data + '</p>');
+                }
+
+                function check_grammar(date_from, date_to){
+                    let date_from_split = date_from.split('-');
+                    let date_to_split = date_to.split('-');
+                    let today = new Date();
+                    if(date_from_split.length != 3 || date_to_split.length != 3) {return -1;}
+
+                    if(date_from_split[0] < 0 || date_from_split[0] > today.getFullYear()) {return 0;}
+
+                    if(date_from_split[1] < 0 || date_from_split[1] > 12) {return 0;}
+                    if(date_to_split[1] < 0 || date_to_split[1] > 12) {return 0;}
+
+                    if(date_from_split[2] < 0 || date_from_split[2] > 31) {return 0;}
+                    if(date_to_split[2] < 0 || date_to_split[2] > 31) {return 0;}
+
+                    if(date_from[0] > date_to[0]) return 0;
+                    else if(date_from[0] == date_to[0] && date_from[1] > date_to[1]) return 0;
+                    else if(date_from[0] == date_to[0] && date_from[1] == date_to[1] && date_from[2] > date_to[2]) return 0;
+
+                    return 1;
+                }
+
+                function send_image(socket, url){
+                    var selectOption = document.getElementById("chat");
+                    selectOption = selectOption.options[selectOption.selectedIndex].value;
+                    var tonick = $("#nickname").val();
+                    if(selectOption == "group" && entered_room_id != ""){
+                        socket.emit('sendimage', {type : 'group', sender : nickname, roomid : entered_room_id, url : url});
+                    }
+                    else  if(selectOption == "group" && entered_room_id == ""){
+                        alert("소속된 그룹이 없습니다.");
+                        return;
+                    }
+                    
+                    if(selectOption == "private" && tonick != ""){
+                        socket.emit('sendimage', {type : 'private', sender : nickname, receiver : tonick, url : url});
+                    }
+                    else if(selectOption == "private" && tonick == ""){
+                        alert("상대방 닉네임을 입력해주세요");
+                        return;
+                    }
+
+                    if(selectOption == "All"){
+                        socket.emit('sendimage', {type : 'all', sender : nickname, url : url});
+                    }
                 }
             });
         </script>

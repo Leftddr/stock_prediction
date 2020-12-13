@@ -36,9 +36,9 @@ def minmax_scaler(data):
 def build_dataset(time_series, seq_length):
     dataX = []
     dataY = []
-    for i in range(0, len(time_series) - seq_length):
+    for i in range(2, len(time_series) - seq_length):
         ## 유동적으로 x, y를 구분해 주기 위함
-        _x = time_series[i:i + seq_length, : len(time_series) - 1]
+        _x = time_series[i:i + seq_length, :]
         _y = time_series[i + seq_length, [-1]]
         print(_x, "->", _y)
         dataX.append(_x)
@@ -53,8 +53,9 @@ def train(net, x, y):
         optimizer.zero_grad()
         outputs = net(x)
         loss = criterion(outputs, y)
+        loss.backward()
         optimizer.step()
-        print(i, loss.item())
+        #print(i, loss.item())
 
 def evaulate(net, x, y):
     correct = 0; total = 0
@@ -77,19 +78,23 @@ def draw(df, date):
     plt.show()
 
 if __name__ == "__main__":
-    df, date = pred.get_response()
-
-    if df == -1:
-        sys.exit(1)
+    
+    df, date = pred.get_response(sys.argv[1], sys.argv[2])
+    
+    if isinstance(df, int) == True and (df == -1 or date == -1):
+        print("날짜형식에 맞게 입력해주세요")
+    elif isinstance(df, int) == True and (df == -2 or date == -2):
+        print("최소 3년 간격으로 입력해 주셔야 학습이 잘됩니다.")
 
     normal_data = df.values
+    print(normal_data)
     ##normal, adj 두개를 구분한다.
-    normal_train_data = normal_data[:len(normal_data) * train_ratio, :]
-    normal_test_data = normal_data[len(normal_data) * train_ratio :, :]
+    normal_train_data = normal_data[:int(len(normal_data) * train_ratio), :]
+    normal_test_data = normal_data[int(len(normal_data) * train_ratio):, :]
 
     normal_trainx, normal_trainy = build_dataset(normal_train_data, 7)
     normal_testx, normal_testy = build_dataset(normal_test_data, 7)
-    
+
     ##tensor로 변환한다.
     trainx_tensor = torch.FloatTensor(normal_trainx).to(device)
     trainy_tensor = torch.FloatTensor(normal_trainy).to(device)
@@ -97,15 +102,14 @@ if __name__ == "__main__":
     testx_tensor = torch.FloatTensor(normal_testx).to(device)
     testy_tensor = torch.FloatTensor(normal_testy).to(device)
 
+    print("learning start")
     ##Class를 선언한다.
-    net = Net(len(normal_data) - 1, hidden_dim, output_dim, 3)
-
-    print('Learning Start')
+    net = Net(len(normal_data[0]), hidden_dim, output_dim, 3)
+    
     train(net, trainx_tensor, trainy_tensor)
-    print('Learning End')
 
-    print('Test Start')
     evaulate(net, testx_tensor,  testy_tensor)
-    print('Test End')
+
+    print("100")
 
 

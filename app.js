@@ -230,6 +230,27 @@ io.sockets.on('connection', function(socket){
         io.sockets.emit('recvimage', message);
       }
     });
+
+    //주식정보 제공
+    socket.on('pred_stock', function(message){
+      console.dir("주식 날짜 받음!!!");
+      var options = {
+        mode : 'text',
+        pythonPath:"",
+        pythonOptions : ['-u'],
+        scriptPath:"",
+        args:[message.date_from, message.date_to]
+      };
+
+      PythonShell.run('stock_pred.py', options, function(err, result){
+        if(err) {console.dir(err); io.sockets.emit("pred_stock", {message : err});}
+        else{
+          console.dir(result);
+          var send_message = {pred : result};
+          io.sockets.emit("pred_stock", {message : send_message});
+        }
+      });
+    });
 });
 
 function sendResponse(socket, command, code, message){
